@@ -4,15 +4,13 @@ import fitz  # PyMuPDF
 import re
 import random
 pdf_path = "ppl.pdf"
-doc = fitz.open(pdf_path)
 
 st.set_page_config(page_title="✈️ آزمون PPL", page_icon="🧠", layout="centered")
 st.title("📝 آزمون تمرینی PPL")
 st.markdown("برای شروع آزمون، فایل PDF رو بارگذاری کن، صفحات رو مشخص کن و شروع کن!")
 
 # ---------- بارگذاری فایل ----------
-uploaded_file = st.file_uploader("📂 فایل PDF آزمون را انتخاب کن:", type=["pdf"])
-
+doc = fitz.open(pdf_path)
 # ---------- تنظیمات آزمون ----------
 start_page = st.number_input("📄 صفحه شروع:", min_value=1, step=1)
 end_page = st.number_input("📄 صفحه پایان:", min_value=start_page, step=1)
