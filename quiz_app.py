@@ -3,6 +3,8 @@ import streamlit as st
 import fitz  # PyMuPDF
 import re
 import random
+pdf_path = "ppl.pdf"
+doc = fitz.open(pdf_path)
 
 st.set_page_config(page_title="✈️ آزمون PPL", page_icon="🧠", layout="centered")
 st.title("📝 آزمون تمرینی PPL")
