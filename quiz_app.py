@@ -7,44 +7,40 @@ st.set_page_config(page_title="✈️ آزمون PPL", page_icon="🧠", layout=
 st.title("📝 آزمون تمرینی PPL")
 st.markdown("سوالات از فایل `ppl.docx` کنار این برنامه خوانده می‌شود.")
 
-# تابع خواندن کل متن فایل ورد
 def load_docx_text(file_path):
     doc = Document(file_path)
     full_text = "\n".join([para.text for para in doc.paragraphs])
     return full_text
 
-# تابع استخراج سوال‌ها و جواب‌ها
 def parse_questions(text):
     questions = []
-    # الگوی سوال: شماره و متن تا قبل از جواب
+    # الگو برای هر سوال و جواب؛ دقت کن فقط متن سوال تا قبل از 'Answer (X) is correct' میگیره
     q_pattern = re.compile(r"(\d+\..*?)(?=Answer \([A-D]\) is correct)", re.DOTALL)
-    # الگوی جواب صحیح
     a_pattern = re.compile(r"Answer \(([A-D])\) is correct")
-    
+
     q_matches = q_pattern.findall(text)
     a_matches = a_pattern.findall(text)
 
     for q, a in zip(q_matches, a_matches):
+        # حالا از متن سوال، خط های اضافی و متن دلیل جواب رو پاک کنیم
+        # معمولاً دلیل جواب بعد از 'Answer...' در پاراگراف جداست؛ چون اون رو جداگانه نگرفتیم، باید خودمون حذف کنیم.
+        # پاک کردن خطوطی که شامل 'Answer' یا دلیل هست:
+        q_clean = "\n".join([line for line in q.split('\n') if not line.strip().startswith("Answer")])
         questions.append({
-            "question": q.strip(),
+            "question": q_clean.strip(),
             "answer": a.strip()
         })
     return questions
 
-# متغیر فایل ورد (اسم دقیق فایل کنار کد)
 docx_file = "ppl.docx"
 
-# تنظیمات کاربر
 st.sidebar.header("تنظیمات آزمون")
 start_page = st.sidebar.number_input("📄 صفحه شروع (فقط عدد وارد کن، مثلاً 1)", min_value=1, value=1, step=1)
 end_page = st.sidebar.number_input("📄 صفحه پایان (عدد >= شروع)", min_value=start_page, value=10, step=1)
 random_order = st.sidebar.checkbox("🔀 سوالات به صورت تصادفی باشند")
 
 if st.sidebar.button("▶️ شروع آزمون"):
-    # کل متن رو بخون (چون ورد صفحه‌بندی نداره، گزینه صفحات فقط برای آینده‌س یا می‌تونی حذفش کنی)
     text = load_docx_text(docx_file)
-    
-    # استخراج سوال و جواب
     questions = parse_questions(text)
 
     if not questions:
@@ -56,7 +52,6 @@ if st.sidebar.button("▶️ شروع آزمون"):
         st.session_state.index = 0
         st.session_state.questions = questions
 
-# اگر آزمون شروع شده
 if "questions" in st.session_state:
     questions = st.session_state.questions
     idx = st.session_state.index
@@ -65,14 +60,18 @@ if "questions" in st.session_state:
     if idx < len(questions):
         q = questions[idx]
         st.markdown(f"### سوال {idx+1}:\n{q['question']}")
-        
-        # گزینه‌های A تا D رو از متن سوال استخراج کنیم (خط به خط)
+
+        # استخراج گزینه‌ها (A تا D) دقیق‌تر
         options_pattern = re.compile(r"([A-D])\.\s*(.+)")
         opts = options_pattern.findall(q['question'])
         options_dict = {opt[0]: opt[1] for opt in opts}
-        
-        choice = st.radio("گزینه‌ی شما:", list(options_dict.keys()) if options_dict else ["A", "B", "C", "D"])
-        
+
+        # اگر گزینه نبود، پیش‌فرض a تا d رو بگذار
+        if not options_dict:
+            options_dict = {"A": "گزینه A", "B": "گزینه B", "C": "گزینه C", "D": "گزینه D"}
+
+        choice = st.radio("گزینه‌ی شما:", list(options_dict.keys()))
+
         if st.button("ثبت پاسخ"):
             if choice == q['answer']:
                 st.success("✅ درست گفتی!")
