@@ -1,111 +1,99 @@
 import streamlit as st
 import fitz  # PyMuPDF
-import random
 import re
 
-st.set_page_config(page_title="آزمون PPL", layout="centered")
-st.title("🧪 آزمون تمرینی PPL")
+def load_questions_from_pdf(file_path, start_page, end_page):
+    doc = fitz.open(file_path)
+    questions = []
 
-# وضعیت اولیه
-if "started" not in st.session_state:
-    st.session_state.started = False
-if "questions" not in st.session_state:
-    st.session_state.questions = []
-if "current_q" not in st.session_state:
-    st.session_state.current_q = 0
+    for i in range(start_page - 1, end_page):  # صفحات در fitz صفر مبنا هستند
+        text = doc.load_page(i).get_text()
+        lines = text.split("\n")
 
-# بارگذاری فایل PDF
-try:
-    doc = fitz.open("ppl.pdf")
-except:
-    st.error("❌ فایل ppl.pdf پیدا نشد. آن را در کنار این اسکریپت قرار بده.")
-    st.stop()
+        for j in range(len(lines)):
+            line = lines[j].strip()
 
-# فرم تنظیمات آزمون
-if not st.session_state.started:
-    st.success("✅ فایل آزمون با موفقیت بارگذاری شد.")
+            if line.startswith("Answer (") and "is correct" in line:
+                match = re.search(r"Answer \(([A-D])\)", line)
+                if not match:
+                    continue
+                correct = match.group(1)
 
-    col1, col2 = st.columns(2)
-    start_page = col1.number_input("📄 صفحه شروع", min_value=0, max_value=len(doc)-1, value=0)
-    end_page = col2.number_input("📄 صفحه پایان", min_value=0, max_value=len(doc)-1, value=min(5, len(doc)-1))
+                options = {}
+                question_lines = []
 
-    order_type = st.radio("🔄 ترتیب سوالات", ["نوبتی", "تصادفی"])
+                # برگردیم بالا برای پیدا کردن گزینه‌ها و سوال
+                for k in range(j - 1, max(j - 25, -1), -1):
+                    l = lines[k].strip()
+                    if re.match(r"^\([A-D]\)", l):  # گزینه
+                        label = l[1]
+                        option_text = l[3:].strip()
+                        options[label] = option_text
+                    elif len(options) > 0:
+                        question_lines.insert(0, l)  # متن سوال
+                    elif l == "":
+                        continue
+                    else:
+                        continue
 
-    if st.button("🎯 شروع آزمون"):
-        questions = []
+                full_question = "\n".join(question_lines).strip()
 
-        for i in range(start_page, end_page + 1):
-            text = doc.load_page(i).get_text()
-            lines = text.split("\n")
+                if full_question and len(options) >= 2:
+                    questions.append({
+                        "question": full_question,
+                        "options": dict(sorted(options.items())),
+                        "answer": correct
+                    })
 
-            for j in range(len(lines)):
-                line = lines[j].strip()
+    doc.close()
+    return questions
 
-                if line.startswith("Answer ("):
-                    correct = line.split("Answer (")[1][0]
-                    options = {}
-                    question_lines = []
 
-                    for k in range(j - 1, max(j - 15, -1), -1):
-                        l = lines[k].strip()
-                        if re.match(r"^\([A-D]\)", l):
-                            label = l[1]
-                            option_text = l[3:].strip()
-                            options[label] = option_text
-                        elif len(options) > 0:
-                            question_lines.insert(0, l)
+def main():
+    st.title("Quiz App")
 
-                    full_question = "\n".join(question_lines).strip()
+    uploaded_file = st.file_uploader("آزمون خود را آپلود کنید (PDF)", type=["pdf"])
+    if not uploaded_file:
+        st.info("لطفا فایل PDF آزمون خود را آپلود کنید.")
+        return
 
-                    if full_question and options:
-                        questions.append({
-                            "question": full_question,
-                            "options": dict(sorted(options.items())),  # مرتب‌سازی
-                            "answer": correct
-                        })
+    start_page = st.number_input("صفحه شروع", min_value=1, step=1)
+    end_page = st.number_input("صفحه پایان", min_value=start_page, step=1)
 
-        if order_type == "تصادفی":
-            random.shuffle(questions)
+    if st.button("شروع آزمون"):
+        with st.spinner("در حال بارگذاری سوالات..."):
+            questions = load_questions_from_pdf(uploaded_file, start_page, end_page)
 
-        if questions:
-            st.session_state.questions = questions
-            st.session_state.started = True
+        if not questions:
+            st.warning("در این بازه صفحه، سوالی پیدا نشد.")
+            return
+
+        st.success(f"تعداد سوالات یافت شده: {len(questions)}")
+
+        # متغیر وضعیت برای حفظ شماره سوال فعلی
+        if "current_q" not in st.session_state:
+            st.session_state.current_q = 0
+
+        # تابع نمایش سوال فعلی
+        def show_question(idx):
+            q_data = questions[idx]
+            st.markdown(f"**سوال {idx + 1}:** {q_data['question']}")
+            choices = [f"{key}. {val}" for key, val in q_data["options"].items()]
+            user_choice = st.radio("جواب خود را انتخاب کنید:", choices, key=f"q_{idx}")
+
+            if st.button("ارسال جواب", key=f"submit_{idx}"):
+                selected_label = user_choice[0]  # اولین حرف گزینه مثلا "A"
+                if selected_label == q_data["answer"]:
+                    st.success("جواب شما درست است! 🎉")
+                else:
+                    st.error(f"جواب شما اشتباه است! جواب درست: {q_data['answer']}")
+                st.session_state.current_q += 1
+
+        # نمایش سوالات به ترتیب
+        if st.session_state.current_q < len(questions):
+            show_question(st.session_state.current_q)
         else:
-            st.warning("❗ در این بازه سوالی پیدا نشد.")
+            st.info("آزمون به پایان رسید. تبریک!")
 
-# نمایش سوالات
-else:
-    questions = st.session_state.questions
-    q_idx = st.session_state.current_q
-    q_data = questions[q_idx]
-
-    st.subheader(f"❓ سوال {q_idx + 1} از {len(questions)}")
-    st.markdown(f"**{q_data['question']}**")
-
-    options = q_data["options"]
-    user_choice = st.radio(
-        "گزینه‌ها:",
-        list(options.keys()),
-        format_func=lambda x: f"({x}) {options[x]}",
-        key=f"opt_{q_idx}"
-    )
-
-    col1, col2, col3 = st.columns([1, 1, 2])
-
-    if col1.button("بررسی پاسخ"):
-        if user_choice == q_data["answer"]:
-            st.success("✅ درست جواب دادی!")
-        else:
-            correct_text = f"({q_data['answer']}) {options[q_data['answer']]}"
-            st.error(f"❌ اشتباه بود. پاسخ درست: {correct_text}")
-
-    if col2.button("سوال بعدی"):
-        if q_idx + 1 < len(questions):
-            st.session_state.current_q += 1
-        else:
-            st.info("🎉 آزمون تموم شد! سوال دیگه‌ای نیست.")
-
-    if col3.button("🔁 بازگشت به تنظیمات"):
-        st.session_state.started = False
-        st.session_state.current_q = 0
-        st.session_state.questions = []
+if __name__ == "__main__":
+    main()
