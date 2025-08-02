@@ -2,11 +2,12 @@ import streamlit as st
 import fitz  # PyMuPDF
 import re
 
-def load_questions_from_pdf(file_path, start_page, end_page):
-    doc = fitz.open(file_path)
+def load_questions_from_pdf(uploaded_file, start_page, end_page):
+    file_bytes = uploaded_file.read()
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
     questions = []
 
-    for i in range(start_page - 1, end_page):  # صفحات در fitz صفر مبنا هستند
+    for i in range(start_page - 1, end_page):
         text = doc.load_page(i).get_text()
         lines = text.split("\n")
 
@@ -22,15 +23,14 @@ def load_questions_from_pdf(file_path, start_page, end_page):
                 options = {}
                 question_lines = []
 
-                # برگردیم بالا برای پیدا کردن گزینه‌ها و سوال
                 for k in range(j - 1, max(j - 25, -1), -1):
                     l = lines[k].strip()
-                    if re.match(r"^\([A-D]\)", l):  # گزینه
+                    if re.match(r"^\([A-D]\)", l):
                         label = l[1]
                         option_text = l[3:].strip()
                         options[label] = option_text
                     elif len(options) > 0:
-                        question_lines.insert(0, l)  # متن سوال
+                        question_lines.insert(0, l)
                     elif l == "":
                         continue
                     else:
@@ -48,9 +48,8 @@ def load_questions_from_pdf(file_path, start_page, end_page):
     doc.close()
     return questions
 
-
 def main():
-    st.title("Quiz App")
+    st.title("اپلیکیشن آزمون")
 
     uploaded_file = st.file_uploader("آزمون خود را آپلود کنید (PDF)", type=["pdf"])
     if not uploaded_file:
@@ -70,11 +69,9 @@ def main():
 
         st.success(f"تعداد سوالات یافت شده: {len(questions)}")
 
-        # متغیر وضعیت برای حفظ شماره سوال فعلی
         if "current_q" not in st.session_state:
             st.session_state.current_q = 0
 
-        # تابع نمایش سوال فعلی
         def show_question(idx):
             q_data = questions[idx]
             st.markdown(f"**سوال {idx + 1}:** {q_data['question']}")
@@ -88,8 +85,8 @@ def main():
                 else:
                     st.error(f"جواب شما اشتباه است! جواب درست: {q_data['answer']}")
                 st.session_state.current_q += 1
+                st.experimental_rerun()  # رفرش صفحه برای سوال بعدی
 
-        # نمایش سوالات به ترتیب
         if st.session_state.current_q < len(questions):
             show_question(st.session_state.current_q)
         else:
