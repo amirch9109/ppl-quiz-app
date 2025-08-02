@@ -2,9 +2,8 @@ import streamlit as st
 import fitz  # PyMuPDF
 import re
 
-def load_questions_from_pdf(uploaded_file, start_page, end_page):
-    file_bytes = uploaded_file.read()
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+def load_questions_from_pdf_path(file_path, start_page, end_page):
+    doc = fitz.open(file_path)
     questions = []
 
     for i in range(start_page - 1, end_page):
@@ -23,6 +22,7 @@ def load_questions_from_pdf(uploaded_file, start_page, end_page):
                 options = {}
                 question_lines = []
 
+                # به بالا برمی‌گردیم تا گزینه‌ها و سوال رو پیدا کنیم
                 for k in range(j - 1, max(j - 25, -1), -1):
                     l = lines[k].strip()
                     if re.match(r"^\([A-D]\)", l):
@@ -49,19 +49,19 @@ def load_questions_from_pdf(uploaded_file, start_page, end_page):
     return questions
 
 def main():
-    st.title("اپلیکیشن آزمون")
+    st.title("اپلیکیشن آزمون (خواندن PDF کنار کد)")
 
-    uploaded_file = st.file_uploader("آزمون خود را آپلود کنید (PDF)", type=["pdf"])
-    if not uploaded_file:
-        st.info("لطفا فایل PDF آزمون خود را آپلود کنید.")
-        return
+    pdf_file_path = "ppl.pdf"  # نام فایل PDF کنار کد
 
     start_page = st.number_input("صفحه شروع", min_value=1, step=1)
     end_page = st.number_input("صفحه پایان", min_value=start_page, step=1)
 
     if st.button("شروع آزمون"):
-        with st.spinner("در حال بارگذاری سوالات..."):
-            questions = load_questions_from_pdf(uploaded_file, start_page, end_page)
+        try:
+            questions = load_questions_from_pdf_path(pdf_file_path, start_page, end_page)
+        except Exception as e:
+            st.error(f"خطا در خواندن فایل PDF: {e}")
+            return
 
         if not questions:
             st.warning("در این بازه صفحه، سوالی پیدا نشد.")
@@ -79,13 +79,13 @@ def main():
             user_choice = st.radio("جواب خود را انتخاب کنید:", choices, key=f"q_{idx}")
 
             if st.button("ارسال جواب", key=f"submit_{idx}"):
-                selected_label = user_choice[0]  # اولین حرف گزینه مثلا "A"
+                selected_label = user_choice[0]  # حرف اول گزینه مثل A
                 if selected_label == q_data["answer"]:
                     st.success("جواب شما درست است! 🎉")
                 else:
                     st.error(f"جواب شما اشتباه است! جواب درست: {q_data['answer']}")
                 st.session_state.current_q += 1
-                st.experimental_rerun()  # رفرش صفحه برای سوال بعدی
+                st.experimental_rerun()
 
         if st.session_state.current_q < len(questions):
             show_question(st.session_state.current_q)
