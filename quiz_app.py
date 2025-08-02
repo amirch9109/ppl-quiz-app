@@ -5,108 +5,100 @@ import random
 
 st.set_page_config(page_title="✈️ آزمون PPL", page_icon="🧠", layout="centered")
 st.title("📝 آزمون تمرینی PPL")
-st.markdown("برای شروع آزمون، تنظیم صفحات را انتخاب کن و شروع کن!")
 
-# وضعیت شروع آزمون
+# ---------- وضعیت ها ----------
 if "started" not in st.session_state:
     st.session_state.started = False
+if "current_q" not in st.session_state:
+    st.session_state.current_q = 0
+if "score" not in st.session_state:
+    st.session_state.score = 0
 
-# تنظیمات آزمون قبل از شروع
-if not st.session_state.started:
-    start_page = st.number_input("📄 صفحه شروع:", min_value=1, step=1, value=1)
-    end_page = st.number_input("📄 صفحه پایان:", min_value=start_page, step=1, value=start_page+1)
-    random_order = st.checkbox("🔀 سوالات به صورت تصادفی نمایش داده شوند", value=False)
-
-    if st.button("▶️ شروع آزمون"):
-        st.session_state.start_page = start_page
-        st.session_state.end_page = end_page
-        st.session_state.random_order = random_order
-        st.session_state.current_q = 0
-        st.session_state.score = 0
-        st.session_state.started = True
-
-# تابع استخراج متن از PDF کنار فایل
-def extract_text_from_pdf(file_path, start, end):
+# ---------- تابع‌ها ----------
+def extract_text_from_pdf(file_path, start_page, end_page):
     doc = fitz.open(file_path)
     text = ""
-    for i in range(start - 1, end):
+    for i in range(start_page - 1, end_page):
         text += doc[i].get_text()
     return text
 
-# تبدیل متن به سوالات
 def parse_questions(text):
     questions = []
-    pattern = re.compile(
-        r"(\d+\..*?)(?=Answer \([A-D]\) is correct)", 
-        re.DOTALL
-    )
-    answers = re.findall(r"Answer \(([A-D])\) is correct", text)
-    q_matches = pattern.findall(text)
 
-    for q_text, ans in zip(q_matches, answers):
+    q_pattern = re.compile(r"(\d+\..*?)(?=Answer \([A-D]\) is correct)", re.DOTALL)
+    a_pattern = re.compile(r"Answer \(([A-D])\) is correct")
+
+    q_matches = q_pattern.findall(text)
+    a_matches = a_pattern.findall(text)
+
+    for q, a in zip(q_matches, a_matches):
+        # استخراج گزینه‌ها
         option_pattern = re.compile(r"\(([A-D])\)\s*([^\n]+)")
-        options = dict(option_pattern.findall(q_text))
-        question_text = re.sub(r"\(([A-D])\)\s*[^\n]+", "", q_text).strip()
-        question_text = re.sub(r"\n+", "\n", question_text).strip()
+        options = dict(option_pattern.findall(q))
+        question_text = re.sub(r"\(([A-D])\)\s*[^\n]+", "", q).strip()
 
         questions.append({
             "question": question_text,
             "options": options,
-            "answer": ans
+            "answer": a
         })
     return questions
 
-# نمایش سوال
-def show_question(q, idx):
-    st.markdown(f"**سوال {idx + 1}:**\n\n{q['question']}")
-    choices = [f"{key}. {val}" for key, val in q["options"].items()]
-    user_choice = st.radio("جواب خود را انتخاب کنید:", choices, key=f"q_{idx}")
+def show_question(q_data, idx):
+    st.markdown(f"**سوال {idx + 1}:**")
+    st.markdown(q_data["question"])
 
-    if st.button("ارسال جواب", key=f"submit_{idx}"):
-        selected = user_choice[0]
-        if selected == q["answer"]:
-            st.success("جواب شما درست است! 🎉")
+    options = q_data["options"]
+    choices = [f"{k}. {v}" for k, v in options.items()]
+    user_answer = st.radio("جواب شما:", choices, key=f"q_{idx}")
+
+    if st.button("ثبت پاسخ", key=f"submit_{idx}"):
+        selected = user_answer[0]
+        if selected == q_data["answer"]:
+            st.success("✅ درست گفتی!")
             st.session_state.score += 1
         else:
-            st.error(f"جواب شما اشتباه است! جواب درست: {q['answer']}")
+            st.error(f"❌ غلط بود. جواب درست: {q_data['answer']}")
 
         st.session_state.current_q += 1
         st.experimental_rerun()
 
-# منطق اصلی
-if st.session_state.started:
-    try:
-        if "questions" not in st.session_state:
-            text = extract_text_from_pdf("ppl.pdf", st.session_state.start_page, st.session_state.end_page)
-            questions = parse_questions(text)
-            if st.session_state.random_order:
-                random.shuffle(questions)
-            st.session_state.questions = questions
+# ---------- تنظیمات اولیه ----------
+if not st.session_state.started:
+    with st.form("settings_form"):
+        start_page = st.number_input("📄 از چه صفحه‌ای شروع کنم؟", min_value=1, step=1, value=1)
+        end_page = st.number_input("📄 تا چه صفحه‌ای برم؟", min_value=start_page, step=1, value=start_page+1)
+        random_order = st.checkbox("🔀 سوالات رندوم باشن؟", value=True)
+        submit = st.form_submit_button("▶️ شروع آزمون")
 
-        questions = st.session_state.questions
+    if submit:
+        text = extract_text_from_pdf("ppl.pdf", start_page, end_page)
+        questions = parse_questions(text)
 
         if not questions:
-            st.warning("در این بازه صفحه سوالی پیدا نشد.")
-            if st.button("بازگشت به تنظیمات"):
-                st.session_state.started = False
-                st.experimental_rerun()
+            st.warning("⛔ هیچ سوالی پیدا نشد. لطفاً بازه صفحات رو چک کن.")
         else:
-            if st.session_state.current_q < len(questions):
-                show_question(questions[st.session_state.current_q], st.session_state.current_q)
-                st.write(f"سوال {st.session_state.current_q + 1} از {len(questions)}")
-                st.write(f"امتیاز فعلی: {st.session_state.score}")
-            else:
-                st.success(f"آزمون تمام شد! نمره شما: {st.session_state.score} از {len(questions)}")
-                if st.button("شروع مجدد آزمون"):
-                    st.session_state.started = False
-                    st.session_state.current_q = 0
-                    st.session_state.score = 0
-                    st.experimental_rerun()
-
-    except Exception as e:
-        st.error(f"خطا در پردازش فایل PDF یا استخراج سوالات: {e}")
-        if st.button("بازگشت به تنظیمات"):
-            st.session_state.started = False
+            if random_order:
+                random.shuffle(questions)
+            st.session_state.questions = questions
+            st.session_state.started = True
+            st.session_state.current_q = 0
+            st.session_state.score = 0
             st.experimental_rerun()
-else:
-    st.info("لطفاً تنظیمات را انتخاب و آزمون را شروع کنید.")
+
+# ---------- آزمون ----------
+if st.session_state.started:
+    questions = st.session_state.questions
+    current_q = st.session_state.current_q
+
+    if current_q < len(questions):
+        show_question(questions[current_q], current_q)
+        st.info(f"سوال {current_q + 1} از {len(questions)} | امتیاز: {st.session_state.score}")
+    else:
+        st.success(f"🎉 آزمون تموم شد! نمره نهایی شما: {st.session_state.score} از {len(questions)}")
+        if st.button("🔁 شروع دوباره"):
+            st.session_state.started = False
+            st.session_state.current_q = 0
+            st.session_state.score = 0
+            del st.session_state.questions
+            st.experimental_rerun()
