@@ -2,11 +2,12 @@ import streamlit as st
 import fitz  # PyMuPDF
 import re
 import random
+import os
 
 st.set_page_config(page_title="✈️ آزمون PPL", page_icon="🧠", layout="centered")
 st.title("📝 آزمون تمرینی PPL")
 
-# ---------- وضعیت ها ----------
+# ---------- وضعیت‌ها ----------
 if "started" not in st.session_state:
     st.session_state.started = False
 if "current_q" not in st.session_state:
@@ -16,6 +17,10 @@ if "score" not in st.session_state:
 
 # ---------- تابع‌ها ----------
 def extract_text_from_pdf(file_path, start_page, end_page):
+    if not os.path.exists(file_path):
+        st.error("⛔ فایل ppl.pdf پیدا نشد. مطمئن شو فایل کنار این برنامه هست.")
+        st.stop()
+
     doc = fitz.open(file_path)
     text = ""
     for i in range(start_page - 1, end_page):
@@ -32,7 +37,6 @@ def parse_questions(text):
     a_matches = a_pattern.findall(text)
 
     for q, a in zip(q_matches, a_matches):
-        # استخراج گزینه‌ها
         option_pattern = re.compile(r"\(([A-D])\)\s*([^\n]+)")
         options = dict(option_pattern.findall(q))
         question_text = re.sub(r"\(([A-D])\)\s*[^\n]+", "", q).strip()
@@ -49,6 +53,10 @@ def show_question(q_data, idx):
     st.markdown(q_data["question"])
 
     options = q_data["options"]
+    if not options:
+        st.warning("⚠️ گزینه‌ای برای این سوال پیدا نشد.")
+        return
+
     choices = [f"{k}. {v}" for k, v in options.items()]
     user_answer = st.radio("جواب شما:", choices, key=f"q_{idx}")
 
@@ -59,11 +67,10 @@ def show_question(q_data, idx):
             st.session_state.score += 1
         else:
             st.error(f"❌ غلط بود. جواب درست: {q_data['answer']}")
-
         st.session_state.current_q += 1
         st.experimental_rerun()
 
-# ---------- تنظیمات اولیه ----------
+# ---------- رابط تنظیمات ----------
 if not st.session_state.started:
     with st.form("settings_form"):
         start_page = st.number_input("📄 از چه صفحه‌ای شروع کنم؟", min_value=1, step=1, value=1)
@@ -72,19 +79,21 @@ if not st.session_state.started:
         submit = st.form_submit_button("▶️ شروع آزمون")
 
     if submit:
-        text = extract_text_from_pdf("ppl.pdf", start_page, end_page)
-        questions = parse_questions(text)
-
-        if not questions:
-            st.warning("⛔ هیچ سوالی پیدا نشد. لطفاً بازه صفحات رو چک کن.")
-        else:
-            if random_order:
-                random.shuffle(questions)
-            st.session_state.questions = questions
-            st.session_state.started = True
-            st.session_state.current_q = 0
-            st.session_state.score = 0
-            st.experimental_rerun()
+        try:
+            text = extract_text_from_pdf("ppl.pdf", start_page, end_page)
+            questions = parse_questions(text)
+            if not questions:
+                st.warning("⛔ هیچ سوالی پیدا نشد. صفحات رو بررسی کن.")
+            else:
+                if random_order:
+                    random.shuffle(questions)
+                st.session_state.questions = questions
+                st.session_state.started = True
+                st.session_state.current_q = 0
+                st.session_state.score = 0
+                st.experimental_rerun()
+        except Exception as e:
+            st.error(f"خطایی رخ داد: {e}")
 
 # ---------- آزمون ----------
 if st.session_state.started:
@@ -97,8 +106,7 @@ if st.session_state.started:
     else:
         st.success(f"🎉 آزمون تموم شد! نمره نهایی شما: {st.session_state.score} از {len(questions)}")
         if st.button("🔁 شروع دوباره"):
-            st.session_state.started = False
-            st.session_state.current_q = 0
-            st.session_state.score = 0
-            del st.session_state.questions
+            for k in ["started", "current_q", "score", "questions"]:
+                if k in st.session_state:
+                    del st.session_state[k]
             st.experimental_rerun()
