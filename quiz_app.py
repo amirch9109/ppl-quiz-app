@@ -1,28 +1,27 @@
 import streamlit as st
-import fitz
+import fitz  # PyMuPDF
 import random
+import re
 
 st.set_page_config(page_title="آزمون PPL", layout="centered")
 st.title("🧪 آزمون تمرینی PPL")
 
-# ✅ نگه‌داشتن وضعیت آزمون
+# وضعیت اولیه
 if "started" not in st.session_state:
     st.session_state.started = False
-
 if "questions" not in st.session_state:
     st.session_state.questions = []
-
 if "current_q" not in st.session_state:
     st.session_state.current_q = 0
 
-# --- بارگذاری فایل PDF ---
+# بارگذاری فایل PDF
 try:
     doc = fitz.open("ppl.pdf")
 except:
-    st.error("❌ فایل ppl.pdf یافت نشد.")
+    st.error("❌ فایل ppl.pdf پیدا نشد. آن را در کنار این اسکریپت قرار بده.")
     st.stop()
 
-# ✅ اگر آزمون هنوز شروع نشده:
+# فرم تنظیمات آزمون
 if not st.session_state.started:
     st.success("✅ فایل آزمون با موفقیت بارگذاری شد.")
 
@@ -34,16 +33,37 @@ if not st.session_state.started:
 
     if st.button("🎯 شروع آزمون"):
         questions = []
+
         for i in range(start_page, end_page + 1):
             text = doc.load_page(i).get_text()
             lines = text.split("\n")
+
             for j in range(len(lines)):
-                if lines[j].strip().startswith("Answer ("):
-                    # گرفتن چند خط قبل از Answer
-                    chunk = lines[j-5:j]
-                    question_text = "\n".join(chunk).strip()
-                    correct_answer = lines[j].strip().split("Answer (")[1][0]
-                    questions.append((question_text, correct_answer))
+                line = lines[j].strip()
+
+                if line.startswith("Answer ("):
+                    correct = line.split("Answer (")[1][0]
+                    options = {}
+                    question_lines = []
+
+                    for k in range(j - 1, max(j - 15, -1), -1):
+                        l = lines[k].strip()
+                        if re.match(r"^\([A-D]\)", l):
+                            label = l[1]
+                            option_text = l[3:].strip()
+                            options[label] = option_text
+                        elif len(options) > 0:
+                            question_lines.insert(0, l)
+
+                    full_question = "\n".join(question_lines).strip()
+
+                    if full_question and options:
+                        questions.append({
+                            "question": full_question,
+                            "options": dict(sorted(options.items())),  # مرتب‌سازی
+                            "answer": correct
+                        })
+
         if order_type == "تصادفی":
             random.shuffle(questions)
 
@@ -51,33 +71,41 @@ if not st.session_state.started:
             st.session_state.questions = questions
             st.session_state.started = True
         else:
-            st.warning("سوالی در این بازه پیدا نشد.")
+            st.warning("❗ در این بازه سوالی پیدا نشد.")
+
+# نمایش سوالات
 else:
-    # ✅ آزمون شروع شده
     questions = st.session_state.questions
     q_idx = st.session_state.current_q
-    question, correct = questions[q_idx]
+    q_data = questions[q_idx]
 
     st.subheader(f"❓ سوال {q_idx + 1} از {len(questions)}")
+    st.markdown(f"**{q_data['question']}**")
 
-    st.text_area("📘 متن سوال", question, height=200, disabled=True)
-
-    user_answer = st.radio("پاسخ شما چیست؟", ["A", "B", "C", "D"], key=f"q_{q_idx}")
+    options = q_data["options"]
+    user_choice = st.radio(
+        "گزینه‌ها:",
+        list(options.keys()),
+        format_func=lambda x: f"({x}) {options[x]}",
+        key=f"opt_{q_idx}"
+    )
 
     col1, col2, col3 = st.columns([1, 1, 2])
+
     if col1.button("بررسی پاسخ"):
-        if user_answer.upper() == correct.upper():
+        if user_choice == q_data["answer"]:
             st.success("✅ درست جواب دادی!")
         else:
-            st.error(f"❌ اشتباه بود. پاسخ درست: {correct}")
+            correct_text = f"({q_data['answer']}) {options[q_data['answer']]}"
+            st.error(f"❌ اشتباه بود. پاسخ درست: {correct_text}")
 
     if col2.button("سوال بعدی"):
         if q_idx + 1 < len(questions):
             st.session_state.current_q += 1
         else:
-            st.info("🎉 تموم شد! سوال دیگه‌ای باقی نمونده.")
+            st.info("🎉 آزمون تموم شد! سوال دیگه‌ای نیست.")
 
-    if col3.button("🔄 بازگشت به تنظیمات"):
+    if col3.button("🔁 بازگشت به تنظیمات"):
         st.session_state.started = False
         st.session_state.current_q = 0
         st.session_state.questions = []
